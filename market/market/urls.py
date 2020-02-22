@@ -19,5 +19,6 @@ from django.conf.urls import url
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    url(r'^api-auth/', include('rest_framework.urls'))
+    path('api/v1/app/', include('app.urls'))
+    # url(r'^api-auth/', include('rest_framework.urls'))
 ]
