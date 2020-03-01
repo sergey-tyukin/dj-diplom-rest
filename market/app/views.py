@@ -1,20 +1,87 @@
+from django.http import Http404
 from requests import get
 from yaml import load as load_yaml, Loader
-
+from django.views.decorators.csrf import csrf_exempt
 from django.core.validators import URLValidator
 from django.http import JsonResponse
+
+from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView
+from rest_framework.response import Response
+from rest_framework.reverse import reverse
+from rest_framework import generics
 
 from app.models import Shop, Category, Product, ProductInfo, Parameter, ProductParameter
 from app.serializers import ShopSerializer, ProductSerializer
+
+
+@api_view(['GET'])
+def api_root(request):
+    return Response({
+        'Просмотр магазинов': reverse('get-shops', request=request),
+        'Просмотр товара': reverse('get-products', kwargs={'pk': 1}, request=request),
+        'Просмотр категории': reverse('get-category', kwargs={'category': 224}, request=request),
+        'Поиск товара': reverse('find-products', request=request) + '?category_id=224&shop_id=1',
+        '': '',
+        'Update partner info': reverse('load-products', request=request),
+        'Swagger': reverse('schema-swagger-ui', request=request),
+    })
+
+
+class GetShopsView(ListAPIView):
+    """
+    Просмотра списка магазинов
+    """
+    queryset = Shop.objects.all()
+    serializer_class = ShopSerializer
+
+
+class GetProductsView(generics.RetrieveAPIView):
+    """
+    Просмотр товара
+    """
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+
+
+class GetCategoryView(generics.ListAPIView):
+    """
+    Просмотр категории
+    """
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+    lookup_field = 'category'
+
+
+class FindProductsView(generics.ListAPIView):
+    """
+    Поиск товара по параметрам:
+     * Категория
+     * Магазин
+    """
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+    lookup_field = 'category'
+
+    def get_queryset(self):
+        products = Product.objects.all()
+
+        if category := self.request.GET.get('category_id'):
+            products = products.filter(category=category)
+
+        if shop := self.request.GET.get('shop_id'):
+            products = products.filter(product_infos__shop__pk=shop)
+
+        return products
 
 
 class PartnerUpdate(APIView):
     """
     Обновление прайса от поставщика
     """
+    # @csrf_exempt
     def post(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=403)
@@ -61,17 +128,3 @@ class PartnerUpdate(APIView):
         return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})
 
 
-class ShopView(ListAPIView):
-    """
-    Просмотра списка магазинов
-    """
-    queryset = Shop.objects.all()
-    serializer_class = ShopSerializer
-
-
-class ProductView(ListAPIView):
-    """
-    Просмотр всех продуктов
-    """
-    queryset = Product.objects.all()
-    serializer_class = ProductSerializer

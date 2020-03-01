@@ -4,3 +4,4 @@ djangorestframework
 django-rest-passwordreset
 requests
 pyyaml
+drf-yasg
