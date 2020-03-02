@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls import url
 from app.views import PartnerUpdate, GetShopsView, GetProductsView, GetCategoryView,\
-    FindProductsView, api_root
+    FindProductsView, api_root, UserView, ContactView
 
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
@@ -32,10 +32,16 @@ urlpatterns = [
     url(r'^swagger/$', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     url(r'^redoc/$', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 
+    path('user/details', UserView.as_view(), name='user-details'),
+    path('user/contacts', ContactView.as_view(), name='user-contacts'),
+
+
     path('shops/get/', GetShopsView.as_view(), name='get-shops'),
     path('products/get/<int:pk>', GetProductsView.as_view(), name='get-products'),
     path('category/get/<int:category>', GetCategoryView.as_view(), name='get-category'),
     path('products/find', FindProductsView.as_view(), name='find-products'),
+
+
 
 
 

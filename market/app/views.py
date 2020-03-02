@@ -12,23 +12,69 @@ from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from rest_framework import generics
+from rest_framework import permissions
 
-from app.models import Shop, Category, Product, ProductInfo, Parameter, ProductParameter
-from app.serializers import ShopSerializer, ProductSerializer
+from app.models import Shop, Category, Product, ProductInfo, Parameter, ProductParameter, User, \
+    Contact
+from app.serializers import ShopSerializer, ProductSerializer, UserSerializer, ContactSerializer
 
 
 @api_view(['GET'])
 def api_root(request):
     return Response({
+        'Получение информации по пользователю': reverse('user-details', request=request),
+        'Получение контактов': reverse('user-contacts', request=request),
+        '': '',
         'Просмотр магазинов': reverse('get-shops', request=request),
         'Просмотр товара': reverse('get-products', kwargs={'pk': 1}, request=request),
         'Просмотр категории': reverse('get-category', kwargs={'category': 224}, request=request),
         'Поиск товара': reverse('find-products', request=request) + '?category_id=224&shop_id=1',
         '': '',
-        'Update partner info': reverse('load-products', request=request),
+        'Загрузка товаров': reverse('load-products', request=request),
+        '': '',
         'Swagger': reverse('schema-swagger-ui', request=request),
     })
 
+
+# Работа с пользователями
+
+class UserView(APIView):
+    queryset = User.objects.all()
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, *args, **kwargs):
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
+
+    def post(self, request, *args, **kwargs):
+        user_serializer = UserSerializer(request.user, data=request.data, partial=True)
+        if user_serializer.is_valid():
+            user_serializer.save()
+            return JsonResponse({'Status': True})
+        else:
+            return JsonResponse({'Status': False, 'Errors': user_serializer.errors})
+
+
+class ContactView(APIView):
+    queryset = Contact.objects.all()
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request):
+        contacts = Contact.objects.filter(user=request.user.id)
+        serializer = ContactSerializer(contacts, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        request.data.update({'user': request.user.id})
+        contact_serializer = ContactSerializer(data=request.data, partial=True)
+        if contact_serializer.is_valid():
+            contact_serializer.save()
+            return JsonResponse({'Status': True})
+        else:
+            return JsonResponse({'Status': False, 'Errors': contact_serializer.errors})
+
+
+# Работа с магазином
 
 class GetShopsView(ListAPIView):
     """
@@ -76,6 +122,8 @@ class FindProductsView(generics.ListAPIView):
 
         return products
 
+
+# Работа с партнерами
 
 class PartnerUpdate(APIView):
     """
@@ -126,5 +174,6 @@ class PartnerUpdate(APIView):
                 return JsonResponse({'Status': True})
 
         return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})
+
 
 
