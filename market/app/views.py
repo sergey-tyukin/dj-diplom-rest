@@ -73,6 +73,40 @@ class ContactView(APIView):
         else:
             return JsonResponse({'Status': False, 'Errors': contact_serializer.errors})
 
+    def put(self, request):
+        contact_id = request.data['id']
+        if not contact_id:
+            return JsonResponse({'Status': False, 'Errors': 'Contact ID not found'})
+
+        contact_serializer = ContactSerializer(data=request.data, partial=True)
+        if not contact_serializer.is_valid():
+            return JsonResponse({'Status': False, 'Errors': contact_serializer.errors})
+
+        contact = Contact.objects.filter(pk=contact_id, user=request.user.id)
+        if not contact:
+            return JsonResponse({'Status': False, 'Errors': 'Contact not found'})
+
+        for key, field in contact_serializer.validated_data.items():
+            contact.update(**{key: field})
+
+        return JsonResponse({'Status': True})
+
+    @csrf_exempt
+    def delete(self, request):
+        if not (contacts_ids := request.data.get('items')):
+            return JsonResponse({'Status': False, 'Errors': 'Field "items" is not set'})
+
+        try:
+            parsed_contact_ids = [int(x) for x in contacts_ids.split(',')]
+        except ValueError:
+            return JsonResponse({'Status': False, 'Errors': 'Format of "items"\'s  is incorrect'})
+
+        for item in parsed_contact_ids:
+            Contact.objects.filter(pk=item, user=request.user.id).delete()
+
+        return JsonResponse({'Status': True})
+
+
 
 # Работа с магазином
 
