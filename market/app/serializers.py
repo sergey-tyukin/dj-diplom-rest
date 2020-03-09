@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from app.models import Shop, Product, ProductInfo, User, Contact
+from app.models import Shop, Product, ProductInfo, User, Contact, ConfirmEmailToken
 
 
 class ContactSerializer(serializers.ModelSerializer):
@@ -10,11 +10,19 @@ class ContactSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     contacts = ContactSerializer(many=True, read_only=True)
+
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'is_staff', 'company',
                   'position', 'contacts')
 
+
+class ConfirmEmailTokenSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = ConfirmEmailToken
+        fields = ('user', 'key')
+        # read_only_fields = ('key',)
 
 class ShopSerializer(serializers.ModelSerializer):
     class Meta:
