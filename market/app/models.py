@@ -240,6 +240,9 @@ class OrderItem(models.Model):
     product_info = models.ForeignKey(ProductInfo, verbose_name='Информация о продукте', related_name='ordered_items',
                                      blank=True,
                                      on_delete=models.CASCADE)
+    # product = models.ForeignKey(Product, verbose_name='Заказанный продукт',
+    #                             related_name='ordered_items',
+    #                             on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(verbose_name='Количество')
 
     class Meta:

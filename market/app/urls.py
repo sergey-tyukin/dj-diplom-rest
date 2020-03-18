@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls import url
 from app.views import PartnerUpdate, GetShopsView, GetProductsView, GetCategoryView, \
-    FindProductsView, UserView, ContactView, ApiRoot, UserRegister, UserConfirm
+    FindProductsView, UserView, ContactView, ApiRoot, UserRegister, UserConfirm, BasketView
 
 from rest_framework.schemas import get_schema_view
 
@@ -48,7 +48,9 @@ urlpatterns = [
     path('user/contacts', ContactView.as_view(), name='user-contacts'),
     path('user/confirm', UserConfirm.as_view(), name='user-confirm'),
 
-    path('shops/get/', GetShopsView.as_view(), name='get-shops'),
+    path('basket', BasketView.as_view(), name='basket'),
+
+    path('shops/get', GetShopsView.as_view(), name='get-shops'),
     path('products/get/<int:pk>', GetProductsView.as_view(), name='get-products'),
     path('category/get/<int:category>', GetCategoryView.as_view(), name='get-category'),
     path('products/find', FindProductsView.as_view(), name='find-products'),

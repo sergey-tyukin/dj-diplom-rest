@@ -1,3 +1,5 @@
+import json
+
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from drf_yasg import openapi
@@ -17,9 +19,9 @@ from rest_framework.reverse import reverse
 
 from drf_yasg.utils import swagger_auto_schema
 from app.models import Shop, Category, Product, ProductInfo, Parameter, ProductParameter, User, \
-    Contact, ConfirmEmailToken
+    Contact, ConfirmEmailToken, Order, OrderItem
 from app.serializers import ShopSerializer, ProductSerializer, UserSerializer, ContactSerializer, \
-    ConfirmEmailTokenSerializer
+    ConfirmEmailTokenSerializer, OrderItemSerializer
 
 
 ##########
@@ -31,18 +33,25 @@ class ApiRoot(APIView):
 
     def get(self, request):
         return Response({
-            'Получение информации по пользователю': reverse('user-details', request=request),
+            'Регистрация пользователя': reverse('user-register', request=request),
+            'Подтверждение e-mail': reverse('user-confirm', request=request),
             'Получение контактов': reverse('user-contacts', request=request),
-            '1': '',
+            'Получение информации по пользователю': reverse('user-details', request=request),
+            '-1': '-',
             'Просмотр магазинов': reverse('get-shops', request=request),
-            'Просмотр товара': reverse('get-products', kwargs={'pk': 1}, request=request),
-            'Просмотр категории': reverse('get-category', kwargs={'category': 224}, request=request),
-            'Поиск товара': reverse('find-products', request=request) + '?category_id=224&shop_id=1',
-            '2': '',
+            'Поиск товара': reverse('find-products',
+                                    request=request) + '?category_id=224&shop_id=1',
+            'Работа с корзиной': reverse('basket', request=request),
+            '-2': '-',
             'Загрузка товаров': reverse('load-products', request=request),
-            '3': '',
+            '-3': '-',
             'Swagger': reverse('schema-swagger-ui', request=request),
             'Authentication': reverse('authentication', request=request),
+            # '': reverse('', request=request),
+            'Просмотр товара': reverse('get-products', kwargs={'pk': 1}, request=request),
+            'Просмотр категории': reverse('get-category', kwargs={'category': 224},
+                                          request=request),
+
         })
 
 
@@ -51,11 +60,13 @@ class ApiRoot(APIView):
 ##########
 
 class UserRegister(APIView):
-    """
-    Регистрация пользователя
-    """
 
     def post(self, request, *args, **kwargs):
+        """
+        Регистрация пользователя
+
+        Регистрация пользователя
+        """
         user_serializer = UserSerializer(data=request.data)
 
         if user_serializer.is_valid():
@@ -76,25 +87,22 @@ class UserRegister(APIView):
             return JsonResponse({'Status': False, 'Errors': user_serializer.errors})
 
 
-class UserConfirm(UpdateAPIView):
-    """
-    Подтверждение email пользователя
-    """
+class UserConfirm(APIView):
 
     def post(self, request, *args, **kwags):
-        confirm_email_serializer = ConfirmEmailTokenSerializer(data=request.data, many=False)
+        """
+        Подтверждение email пользователя
 
-        if not confirm_email_serializer.is_valid():
-            return JsonResponse({'Status': False, 'Errors': confirm_email_serializer.errors})
-
-        requested_user = confirm_email_serializer.validated_data['user']
+        Подтверждение email пользователя
+        """
+        requested_user = request.user
 
         if requested_user.is_active:
             return JsonResponse({'Status': False, 'Error': 'User is already activated'})
 
         token = ConfirmEmailToken.objects.filter(
             user=requested_user,
-            key=confirm_email_serializer.validated_data['key']).first()
+            key=request.data['token']).first()
 
         if not token:
             return JsonResponse({'Status': False, 'Error': 'Token is invalid'})
@@ -105,7 +113,7 @@ class UserConfirm(UpdateAPIView):
             token.delete()
             return JsonResponse({'Status': True})
 
-        return  JsonResponse({'Status': False, 'Error': 'Unknown error'})
+        return JsonResponse({'Status': False, 'Error': 'Unknown error'})
 
 
 class UserView(APIView):
@@ -227,6 +235,104 @@ class GetShopsView(ListAPIView):
     queryset = Shop.objects.all()
     serializer_class = ShopSerializer
     # permission_classes = (permissions.IsAuthenticated,)
+
+
+class BasketView(APIView):
+    # permission_classes = (permissions.IsAuthenticated,)
+    queryset = Order.objects.all()
+
+    @csrf_exempt
+    def post(self, request, *args, **kwags):
+        """
+        Добавить товары в корзину
+
+        Добавить товары в корзину
+        """
+        try:
+            basket_items = json.loads(request.data.get('items'))
+        except ValueError:
+            return JsonResponse({'Status': False, 'Errors': 'Запрос составлен некорректно'})
+
+        basket, _ = Order.objects.get_or_create(user_id=request.user.id, state='basket')
+
+        for item in basket_items:
+            item.update({'order': basket.id})
+            basket_serializer = OrderItemSerializer(data=item)
+            if basket_serializer.is_valid():
+                basket_serializer.save()
+            else:
+                return JsonResponse({'Status': False, 'Errors': basket_serializer.errors})
+
+        return JsonResponse({'Status': True})
+
+    def put(self, request, *args, **kwags):
+        """
+        Редактировать содержимое корзины
+
+        Редактировать содержимое корзины
+        """
+        try:
+            basket_items = json.loads(request.data.get('items'))
+        except ValueError:
+            return JsonResponse({'Status': False, 'Errors': 'Запрос составлен некорректно'})
+
+        updated_items = []
+        unupdated_items = []
+
+        for item in basket_items:
+            if isinstance(item['product_info'], int) and isinstance(item['quantity'], int):
+                try:
+                    product = ProductInfo.objects.get(product__id=item['product_info'])
+
+                    OrderItem.objects.filter(order__user=request.user,
+                                          order__state='basket',
+                                          product_info=product
+                                          ).update(quantity=item['quantity'])
+
+                except:
+                    unupdated_items.append(item)
+                else:
+                    updated_items.append(item['product_info'])
+            else:
+                unupdated_items.append(item)
+
+        return JsonResponse(
+            {'Updated items': str(updated_items), 'Unupdated items': str(unupdated_items)})
+
+    def delete(self, request, *args, **kwags):
+        """
+        Удалить товары из корзины
+
+        Удалить товары из корзины
+        """
+        try:
+            delete_items = [int(x) for x in request.data.get('items').split(',')]
+        except ValueError:
+            return JsonResponse({'Status': False, 'Errors': 'Запрос составлен некорректно'})
+        deleted_items = []
+        undeleted_items = {}
+        for item in delete_items:
+            try:
+                OrderItem.objects.get(order__user=request.user,
+                                      order__state='basket',
+                                      pk=item).delete()
+            except Exception as e:
+                undeleted_items[item] = e.args[0]
+            else:
+                deleted_items.append(item)
+
+        return JsonResponse({'Deleted items': str(deleted_items), 'Undeleted items': str(undeleted_items)})
+
+    def get(self, request, *args, **kwags):
+        """
+        Получить содержимое корзины
+
+        Получить содержимое корзины
+        """
+        items = OrderItem.objects.filter(order__user=request.user, order__state='basket')
+        items_serializer = OrderItemSerializer(items, many=True)
+
+        return Response(items_serializer.data)
 
 
 class GetProductsView(generics.RetrieveAPIView):
