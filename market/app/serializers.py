@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from app.models import Shop, Product, ProductInfo, User, Contact, ConfirmEmailToken, Order, OrderItem
+from app.models import Shop, Product, ProductInfo, User, Contact, ConfirmEmailToken, Order,\
+    OrderItem, Category
 
 
 class ContactSerializer(serializers.ModelSerializer):
@@ -45,6 +46,12 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'category', 'product_infos')
 
 
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ('id', 'name', 'shops')
+
+
 class OrderSerializer(serializers.ModelSerializer):
     # ordered_items = OrderItemCreateSerializer(read_only=True, many=True)
 
@@ -62,11 +69,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
         model = OrderItem
         fields = ('id', 'product_info', 'quantity', 'order',)
         read_only_fields = ('id',)
-        # extra_kwargs = {
-        #     'order': {'write_only': True}
-        # }
-#
-#
-# class OrderItemCreateSerializer(OrderItemSerializer):
-#     product_info = ProductInfoSerializer(read_only=True)
-#
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    ordered_items = OrderItemSerializer(read_only=True, many=True)
+
+    contact = ContactSerializer(read_only=True)
+
+    class Meta:
+        model = Order
+        fields = ('id', 'ordered_items', 'state', 'dt', 'contact',)
+        read_only_fields = ('id',)

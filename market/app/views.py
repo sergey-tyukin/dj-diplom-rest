@@ -1,27 +1,28 @@
 import json
+from requests import get
+from yaml import load as load_yaml, Loader
+from drf_yasg.utils import swagger_auto_schema
 
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
-from drf_yasg import openapi
-from requests import get
-from yaml import load as load_yaml, Loader
 from django.views.decorators.csrf import csrf_exempt
 from django.core.validators import URLValidator
 from django.http import JsonResponse
 from django.db import transaction
+from django.contrib.auth import authenticate
 
-from rest_framework import generics, permissions
+from rest_framework import permissions
+from rest_framework.authtoken.models import Token
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
-from rest_framework.generics import ListAPIView, UpdateAPIView
+from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
 
-from drf_yasg.utils import swagger_auto_schema
 from app.models import Shop, Category, Product, ProductInfo, Parameter, ProductParameter, User, \
     Contact, ConfirmEmailToken, Order, OrderItem
 from app.serializers import ShopSerializer, ProductSerializer, UserSerializer, ContactSerializer, \
-    ConfirmEmailTokenSerializer, OrderItemSerializer
+    OrderItemSerializer, CategorySerializer, OrderSerializer
 
 
 ##########
@@ -31,27 +32,33 @@ from app.serializers import ShopSerializer, ProductSerializer, UserSerializer, C
 class ApiRoot(APIView):
     swagger_schema = None
 
-    def get(self, request):
+    def get(self, request, *args, **kwags):
+        """
+        Корень API
+
+        Корень API
+        """
         return Response({
+            # Работа с пользователем
             'Регистрация пользователя': reverse('user-register', request=request),
             'Подтверждение e-mail': reverse('user-confirm', request=request),
             'Получение контактов': reverse('user-contacts', request=request),
             'Получение информации по пользователю': reverse('user-details', request=request),
-            '-1': '-',
+            'Аутентификация пользователя': reverse('user-login', request=request),
+            # Действия клиента
             'Просмотр магазинов': reverse('get-shops', request=request),
+            'Просмотр товара': reverse('get-products', kwargs={'pk': 1}, request=request),
             'Поиск товара': reverse('find-products',
                                     request=request) + '?category_id=224&shop_id=1',
             'Работа с корзиной': reverse('basket', request=request),
-            '-2': '-',
+            'Просмотр списка категорий': reverse('get-categories', request=request),
+            'Работа с заказами': reverse('orders', request=request),
+            # Действия магазина
             'Загрузка товаров': reverse('load-products', request=request),
-            '-3': '-',
+            'Стать магазином': reverse('partners', request=request),
+            # Служебное
             'Swagger': reverse('schema-swagger-ui', request=request),
             'Authentication': reverse('authentication', request=request),
-            # '': reverse('', request=request),
-            'Просмотр товара': reverse('get-products', kwargs={'pk': 1}, request=request),
-            'Просмотр категории': reverse('get-category', kwargs={'category': 224},
-                                          request=request),
-
         })
 
 
@@ -95,7 +102,14 @@ class UserConfirm(APIView):
 
         Подтверждение email пользователя
         """
-        requested_user = request.user
+
+        email = request.POST.get('email')
+        if not email:
+            return JsonResponse({'Status': False, 'Error': 'Необходимо указать email'})
+
+        requested_user = User.objects.get(email=email)
+        if not requested_user:
+            return JsonResponse({'Status': False, 'Error': 'Email не найден'})
 
         if requested_user.is_active:
             return JsonResponse({'Status': False, 'Error': 'User is already activated'})
@@ -117,11 +131,8 @@ class UserConfirm(APIView):
 
 
 class UserView(APIView):
-    """
-    Просмотр и редактирование информации о пользователе
-    """
     queryset = User.objects.all()
-    # permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated,)
 
     @swagger_auto_schema(responses={200: 'Данные успешно извлечены'})
     def get(self, request, *args, **kwargs):
@@ -152,9 +163,9 @@ class ContactView(APIView):
     Работа с контактными данными пользователя
     """
     queryset = Contact.objects.all()
-    # permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated,)
 
-    def get(self, request):
+    def get(self, request, *args, **kwags):
         """
         Получение списка контактных данных
 
@@ -164,21 +175,22 @@ class ContactView(APIView):
         serializer = ContactSerializer(contacts, many=True)
         return Response(serializer.data)
 
-    def post(self, request):
+    def post(self, request, *args, **kwags):
         """
         Создание новых контактных данных
 
         Создание новых контактных данных
         """
-        request.data.update({'user': request.user.id})
-        contact_serializer = ContactSerializer(data=request.data, partial=True)
+        data = request.data.copy()
+        data.update({'user': request.user.id})
+        contact_serializer = ContactSerializer(data=data, partial=True)
         if contact_serializer.is_valid():
             contact_serializer.save()
             return JsonResponse({'Status': True})
         else:
             return JsonResponse({'Status': False, 'Errors': contact_serializer.errors})
 
-    def put(self, request):
+    def put(self, request, *args, **kwags):
         """
         Обновление контактных данных
 
@@ -201,8 +213,7 @@ class ContactView(APIView):
 
         return JsonResponse({'Status': True})
 
-    @csrf_exempt
-    def delete(self, request):
+    def delete(self, request, *args, **kwags):
         """
         Удаление контактных данных
 
@@ -222,6 +233,27 @@ class ContactView(APIView):
         return JsonResponse({'Status': True})
 
 
+class UserLoginView(APIView):
+    def post(self, request, *args, **kwags):
+        """
+        Вход пользователя
+
+        Вход пользователя
+        """
+        if 'email' not in request.data or 'password' not in request.data:
+            return JsonResponse({'Status': False, 'Errors': 'Не указан email или пароль'})
+
+        user = authenticate(request,
+                            username=request.data['email'],
+                            password=request.data['password'])
+
+        if user and user.is_active:
+            token, _ = Token.objects.get_or_create(user=user)
+            return JsonResponse({'Status': True, 'Token': token.key})
+
+        return JsonResponse({'Status': False, 'Errors': 'Пара email-пароль не найдена'})
+
+
 ##########
 # Работа с магазином
 ##########
@@ -234,14 +266,13 @@ class GetShopsView(ListAPIView):
     """
     queryset = Shop.objects.all()
     serializer_class = ShopSerializer
-    # permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated,)
 
 
 class BasketView(APIView):
-    # permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated,)
     queryset = Order.objects.all()
 
-    @csrf_exempt
     def post(self, request, *args, **kwags):
         """
         Добавить товары в корзину
@@ -335,7 +366,7 @@ class BasketView(APIView):
         return Response(items_serializer.data)
 
 
-class GetProductsView(generics.RetrieveAPIView):
+class GetProductsView(RetrieveAPIView):
     """
     Просмотр детальной информации о продукте
 
@@ -343,10 +374,10 @@ class GetProductsView(generics.RetrieveAPIView):
     """
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
-    # permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated,)
 
 
-class FindProductsView(generics.ListAPIView):
+class FindProductsView(ListAPIView):
     """
     Поиск товара по параметрам
 
@@ -356,7 +387,7 @@ class FindProductsView(generics.ListAPIView):
     """
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
-    # permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated,)
     lookup_field = 'category'
 
     def get_queryset(self):
@@ -371,6 +402,54 @@ class FindProductsView(generics.ListAPIView):
         return products
 
 
+class OrdersView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, *args, **kwags):
+        """
+        Просмотр заказов
+
+        Просмотр заказов
+        """
+        order = Order.objects.filter(
+            user_id=request.user.id).exclude(state='basket').distinct()
+
+        serializer = OrderSerializer(order, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, *args, **kwags):
+        """
+        Размещение заказа
+
+        Размещение заказа
+        """
+
+        try:
+            contact = Contact.objects.get(id=request.data.get('contact'))
+        except:
+            return JsonResponse(
+                {'Status': False, 'Errors': 'Укажите корректные контакты для доставки'})
+
+        try:
+            order = Order.objects.get(user=request.user, state='basket')
+        except:
+            return JsonResponse(
+                {'Status': False, 'Errors': 'Корзина пуста'})
+
+        with transaction.atomic():
+            order.state = 'new'
+            order.contact = contact
+            order.save()
+
+        return JsonResponse({'Status': True, 'Errors': 'Заказ размещен'})
+
+
+class CategoriesView(ListAPIView):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+
 ##########
 # Работа с партнерами
 ##########
@@ -382,12 +461,9 @@ class PartnerUpdate(APIView):
     Обновление прайса магазином
     """
 
-    # permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated,)
 
-    # @csrf_exempt
     def post(self, request, *args, **kwargs):
-        # if not request.user.is_authenticated:
-        #     return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=403)
 
         if request.user.type != 'shop':
             return JsonResponse({'Status': False, 'Error': 'Только для магазинов'}, status=403)
@@ -431,20 +507,58 @@ class PartnerUpdate(APIView):
         return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})
 
 
+class PartnerView(APIView):
+
+    def get(self, request, *args, **kwags):
+        """
+        Получить свой текущий статус
+
+        Получить свой текущий статус
+        """
+        return JsonResponse({'State': request.user.type})
+
+    def post(self, request, *args, **kwags):
+        """
+        Изменить свой статус
+
+        Изменить свой статус
+        """
+
+        user = request.user
+        if request.data.get('state') == 'on':
+            user.type = 'shop'
+        elif request.data.get('state') == 'off':
+            user.type = 'buyer'
+        else:
+            return JsonResponse({'Status': False, 'Error': 'Заполните корректно поле status'})
+        user.save()
+
+        return JsonResponse({'Status': True})
+
+
+class GetOrdersView(ListAPIView):
+    """
+    Получить список заказов для доставки
+    """
+    queryset = Order.objects.filter(state='new')
+    serializer_class = OrderSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+
 ##########
 # Остальное
 ##########
 
-class GetCategoryView(generics.ListAPIView):
-    """
-    List of category
-
-    List of category
-    :parameter category: Product identifier
-    """
-    swagger_schema = None
-
-    queryset = Product.objects.all()
-    serializer_class = ProductSerializer
-    lookup_field = 'category'
-    # permission_classes = (permissions.IsAuthenticated,)
+# class GetCategoryView(ListAPIView):
+#     """
+#     List of category
+#
+#     List of category
+#     :parameter category: Product identifier
+#     """
+#     swagger_schema = None
+#
+#     queryset = Product.objects.all()
+#     serializer_class = ProductSerializer
+#     lookup_field = 'category'
+#     permission_classes = (permissions.IsAuthenticated,)

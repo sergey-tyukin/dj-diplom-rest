@@ -1,8 +1,11 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls import url
-from app.views import PartnerUpdate, GetShopsView, GetProductsView, GetCategoryView, \
-    FindProductsView, UserView, ContactView, ApiRoot, UserRegister, UserConfirm, BasketView
+from app.views import PartnerUpdate, GetShopsView, GetProductsView, \
+    FindProductsView, UserView, ContactView, ApiRoot, UserRegister, UserConfirm, BasketView, \
+    UserLoginView, CategoriesView, OrdersView, PartnerView
+
+from django_rest_passwordreset.views import reset_password_request_token, reset_password_confirm
 
 from rest_framework.schemas import get_schema_view
 
@@ -47,13 +50,19 @@ urlpatterns = [
     path('user/details', UserView.as_view(), name='user-details'),
     path('user/contacts', ContactView.as_view(), name='user-contacts'),
     path('user/confirm', UserConfirm.as_view(), name='user-confirm'),
+    path('user/login', UserLoginView.as_view(), name='user-login'),
+    path('user/password_reset', reset_password_request_token, name='password-reset'),
+    path('user/password_reset/confirm', reset_password_confirm, name='password-reset-confirm'),
 
     path('basket', BasketView.as_view(), name='basket'),
 
     path('shops/get', GetShopsView.as_view(), name='get-shops'),
     path('products/get/<int:pk>', GetProductsView.as_view(), name='get-products'),
-    path('category/get/<int:category>', GetCategoryView.as_view(), name='get-category'),
+    # path('category/get/<int:category>', GetCategoryView.as_view(), name='get-category'),
     path('products/find', FindProductsView.as_view(), name='find-products'),
+    path('category', CategoriesView.as_view(), name='get-categories'),
+    path('orders', OrdersView.as_view(), name='orders'),
+    path('partners', PartnerView.as_view(), name='partners'),
 
     # url(r'^products/get/(?P<pk>[0-9]+)/$', GetProductsView.as_view(), name='get-products'),
 
